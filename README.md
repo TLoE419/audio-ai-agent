@@ -18,6 +18,7 @@ audio-ai-agent/
   backend/
     go.mod
     main.go
+    main_test.go
   docs/
     decisions/
       0001-tech-stack.md
@@ -26,4 +27,4 @@ audio-ai-agent/
 
 ## Next Step
 
-Add the first backend route that calls an external LLM API with a timeout budget.
+Connect `POST /v1/chat` to an external LLM API with a timeout budget.
