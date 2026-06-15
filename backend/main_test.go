@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -40,17 +41,26 @@ func TestHandleChatRejectsMissingMessage(t *testing.T) {
 	}
 }
 
-func TestHandleChatReturnsNotImplementedUntilProviderIsConnected(t *testing.T) {
+func TestHandleChatReturnsPlaceholderTextAndLatency(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"hello"}`))
 	rec := httptest.NewRecorder()
 
 	newRouter().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("expected status %d, got %d", http.StatusNotImplemented, rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	if got := rec.Body.String(); !strings.Contains(got, "chat provider not connected yet") {
-		t.Fatalf("expected provider placeholder error, got %q", got)
+	var res chatResponse
+	if err := json.NewDecoder(rec.Body).Decode(&res); err != nil {
+		t.Fatalf("expected valid json response, got %v", err)
+	}
+
+	if res.Text == "" {
+		t.Fatal("expected placeholder text")
+	}
+
+	if res.LatencyMS < 0 {
+		t.Fatalf("expected non-negative latency, got %d", res.LatencyMS)
 	}
 }

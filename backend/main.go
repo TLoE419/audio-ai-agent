@@ -77,7 +77,14 @@ type chatRequest struct {
 	Message string `json:"message"`
 }
 
+type chatResponse struct {
+	Text      string `json:"text"`
+	LatencyMS int64  `json:"latency_ms"`
+}
+
 func handleChat(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -95,10 +102,11 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
+	w.WriteHeader(http.StatusOK)
 
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"error": "chat provider not connected yet",
+	_ = json.NewEncoder(w).Encode(chatResponse{
+		Text:      "chat provider not connected yet",
+		LatencyMS: time.Since(start).Milliseconds(),
 	})
 }
 
