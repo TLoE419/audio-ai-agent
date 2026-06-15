@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -20,12 +21,9 @@ func main() {
 }
 
 func run() error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", handleHealthz)
-
 	server := &http.Server{
 		Addr:              ":" + port(),
-		Handler:           mux,
+		Handler:           newRouter(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -53,6 +51,14 @@ func run() error {
 	}
 }
 
+func newRouter() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", handleHealthz)
+	mux.HandleFunc("/v1/chat", handleChat)
+
+	return mux
+}
+
 func handleHealthz(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -64,6 +70,35 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status": "ok",
+	})
+}
+
+type chatRequest struct {
+	Message string `json:"message"`
+}
+
+func handleChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req chatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Message) == "" {
+		http.Error(w, "message is required", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotImplemented)
+
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error": "chat provider not connected yet",
 	})
 }
 
