@@ -19,11 +19,25 @@ audio-ai-agent/
   .gitignore
   backend/
     anthropic.go
+    avatar_audio.go
+    avatar_audio_test.go
+    avatar_liteavatar.go
+    avatar_liteavatar_test.go
     env.go
+    env_test.go
     go.mod
+    handlers_avatar.go
+    handlers_avatar_test.go
+    handlers_chat.go
+    handlers_chat_test.go
+    handlers_tts.go
+    handlers_tts_test.go
+    liteavatar_worker.py
     llm.go
     main.go
-    main_test.go
+    openai.go
+    server.go
+    server_test.go
     tts.go
   frontend/
     app/
@@ -88,6 +102,8 @@ Optional settings:
 - `BOSON_TTS_VOICE`: defaults to `default`.
 - `BOSON_TTS_RESPONSE_FORMAT`: defaults to `mp3`.
 - `BOSON_TTS_TIMEOUT_MS`: defaults to `30000`.
+- `AVATAR_TIMEOUT_MS`: defaults to `300000` for `/v1/avatar` video generation.
+- `OPENAVATARCHAT_PRELOAD`: defaults to enabled when `external/OpenAvatarChat` exists; set `0` to use the old per-request script path.
 
 ## Frontend
 
