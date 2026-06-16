@@ -24,6 +24,16 @@ audio-ai-agent/
     main.go
     main_test.go
     tts.go
+  frontend/
+    app/
+      globals.css
+      layout.tsx
+      page.tsx
+    next-env.d.ts
+    next.config.mjs
+    package-lock.json
+    package.json
+    tsconfig.json
   docs/
     decisions/
       0001-tech-stack.md
@@ -32,7 +42,7 @@ audio-ai-agent/
 
 ## Next Step
 
-Build a minimal frontend that calls `POST /v1/chat`, then calls `POST /v1/tts` and plays the returned audio.
+Add microphone input after the text-to-voice loop is stable.
 
 ## Backend Configuration
 
@@ -59,3 +69,28 @@ Optional settings:
 - `BOSON_TTS_VOICE`: defaults to `default`.
 - `BOSON_TTS_RESPONSE_FORMAT`: defaults to `mp3`.
 - `BOSON_TTS_TIMEOUT_MS`: defaults to `30000`.
+
+## Frontend
+
+The frontend lives in `frontend/` so the Next.js app can evolve separately from the Go backend without mixing package files at the repo root.
+
+Run the backend first:
+
+```sh
+cd backend
+GOCACHE=/private/tmp/audio-ai-agent-go-cache go run .
+```
+
+Then run the frontend:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend calls `/backend/v1/chat` and `/backend/v1/tts`. `frontend/next.config.mjs` rewrites those requests to the Go backend at `http://127.0.0.1:18080` by default.
+
+Optional setting:
+
+- `BACKEND_URL`: overrides the backend URL used by the Next.js rewrite.
