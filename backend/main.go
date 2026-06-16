@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -27,6 +30,9 @@ func main() {
 
 var convertAudioTo16kMonoWAV = ffmpegTo16kMonoWAV
 var generateAvatarVideo = liteAvatarVideo
+var liteAvatarHTTPClient = http.DefaultClient
+var liteAvatarWorkerMu sync.RWMutex
+var liteAvatarWorker *liteAvatarWorkerClient
 
 func run() error {
 	if err := loadDotEnvFiles(".env", "../.env"); err != nil {
@@ -41,6 +47,21 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if shouldPreloadLiteAvatar() {
+		preloadCtx, cancelPreload := context.WithTimeout(ctx, avatarTimeout())
+		worker, err := startLiteAvatarWorker(preloadCtx)
+		cancelPreload()
+		if err != nil {
+			slog.Warn("liteavatar preload failed, falling back to per-request python", "error", err)
+		} else {
+			setLiteAvatarWorker(worker)
+			defer func() {
+				setLiteAvatarWorker(nil)
+				worker.Close()
+			}()
+		}
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -70,7 +91,7 @@ func newRouter() http.Handler {
 	mux.HandleFunc("/v1/tts", handleTTS)
 	mux.HandleFunc("/v1/avatar", handleAvatar)
 
-	return logRequests(mux)
+	return logRequests(withCORS(mux))
 }
 
 func logRequests(next http.Handler) http.Handler {
@@ -91,6 +112,30 @@ func logRequests(next http.Handler) http.Handler {
 			"status", status,
 			"latency_ms", time.Since(start).Milliseconds(),
 		)
+	})
+}
+
+func withCORS(next http.Handler) http.Handler {
+	allowedOrigins := map[string]bool{
+		"http://localhost:3000": true,
+		"http://127.0.0.1:3000": true,
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if allowedOrigins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Vary", "Origin")
+		}
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -394,6 +439,18 @@ func ffmpegTo16kMonoWAV(ctx context.Context, audio []byte) ([]byte, error) {
 }
 
 func liteAvatarVideo(ctx context.Context, wavAudio []byte) ([]byte, error) {
+	if worker := currentLiteAvatarWorker(); worker != nil {
+		video, err := worker.Render(ctx, wavAudio)
+		if err == nil {
+			return video, nil
+		}
+		slog.Warn("preloaded liteavatar worker failed, falling back to cli", "error", err)
+	}
+
+	return liteAvatarVideoCLI(ctx, wavAudio)
+}
+
+func liteAvatarVideoCLI(ctx context.Context, wavAudio []byte) ([]byte, error) {
 	prepareStart := time.Now()
 	tempDir, err := os.MkdirTemp("", "audio-ai-agent-avatar-*")
 	if err != nil {
@@ -447,6 +504,166 @@ func liteAvatarVideo(ctx context.Context, wavAudio []byte) ([]byte, error) {
 	logStep("liteavatar", "read_video", readStart, "video_bytes", len(video))
 
 	return video, nil
+}
+
+type liteAvatarWorkerClient struct {
+	cmd     *exec.Cmd
+	baseURL string
+	tempDir string
+}
+
+func startLiteAvatarWorker(ctx context.Context) (*liteAvatarWorkerClient, error) {
+	start := time.Now()
+	tempDir, err := os.MkdirTemp("", "audio-ai-agent-liteavatar-worker-*")
+	if err != nil {
+		return nil, err
+	}
+
+	openAvatarChatDir, err := filepath.Abs(defaultOpenAvatarChatDir())
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return nil, err
+	}
+	dataDir, err := liteAvatarDataDir(ctx, openAvatarChatDir, tempDir)
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return nil, err
+	}
+
+	scriptPath, err := filepath.Abs(liteAvatarWorkerScript())
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return nil, err
+	}
+	pythonPath := filepath.Join(openAvatarChatDir, ".venv", "bin", "python")
+	cmd := exec.CommandContext(ctx,
+		pythonPath,
+		scriptPath,
+		"--open-avatar-chat-dir", openAvatarChatDir,
+		"--data-dir", dataDir,
+	)
+	cmd.Stderr = os.Stderr
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, err
+	}
+
+	readyCh := make(chan string, 1)
+	scanDone := make(chan error, 1)
+	go scanLiteAvatarWorkerStdout(stdout, readyCh, scanDone)
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case baseURL := <-readyCh:
+		logStep("liteavatar", "preload_worker", start, "url", baseURL)
+		return &liteAvatarWorkerClient{cmd: cmd, baseURL: baseURL, tempDir: tempDir}, nil
+	case err := <-scanDone:
+		if err == nil {
+			err = io.EOF
+		}
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("liteavatar worker stdout closed before ready: %w", err)
+	case err := <-waitCh:
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("liteavatar worker exited before ready: %w", err)
+	case <-ctx.Done():
+		_ = cmd.Process.Kill()
+		os.RemoveAll(tempDir)
+		return nil, ctx.Err()
+	}
+}
+
+func scanLiteAvatarWorkerStdout(stdout io.Reader, readyCh chan<- string, doneCh chan<- error) {
+	scanner := bufio.NewScanner(stdout)
+	readySent := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !readySent && strings.HasPrefix(line, "READY ") {
+			readyCh <- strings.TrimSpace(strings.TrimPrefix(line, "READY "))
+			readySent = true
+			continue
+		}
+		slog.Info("liteavatar worker", "line", line)
+	}
+	doneCh <- scanner.Err()
+}
+
+func (c *liteAvatarWorkerClient) Render(ctx context.Context, wavAudio []byte) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/render", bytes.NewReader(wavAudio))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "audio/wav")
+
+	resp, err := liteAvatarHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("liteavatar worker returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	return body, nil
+}
+
+func (c *liteAvatarWorkerClient) Close() {
+	if c == nil {
+		return
+	}
+	if c.cmd != nil && c.cmd.Process != nil {
+		_ = c.cmd.Process.Kill()
+	}
+	if c.tempDir != "" {
+		_ = os.RemoveAll(c.tempDir)
+	}
+}
+
+func setLiteAvatarWorker(worker *liteAvatarWorkerClient) {
+	liteAvatarWorkerMu.Lock()
+	defer liteAvatarWorkerMu.Unlock()
+	liteAvatarWorker = worker
+}
+
+func currentLiteAvatarWorker() *liteAvatarWorkerClient {
+	liteAvatarWorkerMu.RLock()
+	defer liteAvatarWorkerMu.RUnlock()
+	return liteAvatarWorker
+}
+
+func shouldPreloadLiteAvatar() bool {
+	value := strings.TrimSpace(os.Getenv("OPENAVATARCHAT_PRELOAD"))
+	if value == "0" || strings.EqualFold(value, "false") {
+		return false
+	}
+	if value == "1" || strings.EqualFold(value, "true") {
+		return true
+	}
+
+	_, err := os.Stat(defaultOpenAvatarChatDir())
+	return err == nil
+}
+
+func liteAvatarWorkerScript() string {
+	if _, err := os.Stat("liteavatar_worker.py"); err == nil {
+		return "liteavatar_worker.py"
+	}
+	return filepath.Join("backend", "liteavatar_worker.py")
 }
 
 func defaultOpenAvatarChatDir() string {

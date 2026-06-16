@@ -16,6 +16,7 @@ type AvatarReply = {
 };
 
 const WAVE_BARS = Array.from({ length: 54 }, (_, index) => 18 + ((index * 37) % 58));
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:18080";
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) {
@@ -128,7 +129,7 @@ export default function Home() {
         throw new Error("Chat response did not include text.");
       }
 
-      const avatarResponse = await fetch("/backend/v1/avatar", {
+      const avatarResponse = await fetch(`${BACKEND_URL}/v1/avatar`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
