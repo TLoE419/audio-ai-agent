@@ -18,6 +18,7 @@ audio-ai-agent/
   .env.example
   .gitignore
   backend/
+    anthropic.go
     env.go
     go.mod
     llm.go
@@ -48,13 +49,31 @@ Add microphone input after the text-to-voice loop is stable.
 
 For local development, copy `.env.example` to `.env` and fill in your API keys. The backend loads `.env` on startup, `.env` values override stale shell values, and real secrets stay out of Git.
 
-`POST /v1/chat` uses a placeholder response unless `OPENAI_API_KEY` is set.
+`POST /v1/chat` uses a placeholder response unless an LLM provider API key is set. Set `LLM_PROVIDER=anthropic` to use Claude, or `LLM_PROVIDER=openai` to use OpenAI. If `LLM_PROVIDER` is empty, the backend tries Anthropic first, then OpenAI.
 
-Optional settings:
+Shared optional setting:
+
+- `LLM_TIMEOUT_MS`: defaults to `10000`.
+
+Claude required setting:
+
+- `ANTHROPIC_API_KEY`: Claude API key.
+
+Claude optional settings:
+
+- `ANTHROPIC_MODEL`: defaults to `claude-sonnet-4-6`.
+- `ANTHROPIC_BASE_URL`: defaults to `https://api.anthropic.com`.
+- `ANTHROPIC_VERSION`: defaults to `2023-06-01`.
+- `ANTHROPIC_MAX_TOKENS`: defaults to `1024`.
+
+OpenAI required setting:
+
+- `OPENAI_API_KEY`: OpenAI API key.
+
+OpenAI optional settings:
 
 - `OPENAI_MODEL`: defaults to `gpt-5.5`.
 - `OPENAI_BASE_URL`: defaults to `https://api.openai.com/v1`.
-- `LLM_TIMEOUT_MS`: defaults to `10000`.
 
 `POST /v1/tts` uses Boson AI Higgs Audio v3 TTS unless `BOSON_API_KEY` is missing.
 

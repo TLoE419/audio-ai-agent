@@ -18,6 +18,27 @@ const defaultOpenAIBaseURL = "https://api.openai.com/v1"
 
 var openAIHTTPClient = http.DefaultClient
 
+type textGenerator interface {
+	GenerateText(ctx context.Context, message string) (string, error)
+}
+
+func newLLMClientFromEnv() (textGenerator, bool) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER"))) {
+	case "anthropic", "claude":
+		return newAnthropicClientFromEnv()
+	case "openai":
+		return newOpenAIClientFromEnv()
+	case "":
+		if client, ok := newAnthropicClientFromEnv(); ok {
+			return client, true
+		}
+
+		return newOpenAIClientFromEnv()
+	default:
+		return nil, false
+	}
+}
+
 type openAIClient struct {
 	apiKey     string
 	baseURL    string

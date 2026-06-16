@@ -112,7 +112,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	text := "chat provider not connected yet"
-	if client, ok := newOpenAIClientFromEnv(); ok {
+	if client, ok := newLLMClientFromEnv(); ok {
 		ctx, cancel := context.WithTimeout(r.Context(), llmTimeout())
 		defer cancel()
 
