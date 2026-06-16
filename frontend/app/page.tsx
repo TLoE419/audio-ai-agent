@@ -8,11 +8,11 @@ type ChatResponse = {
   error?: string;
 };
 
-type VoiceReply = {
+type AvatarReply = {
   userText: string;
   aiText: string;
   chatLatencyMs: number | null;
-  audioUrl: string;
+  videoUrl: string;
 };
 
 const WAVE_BARS = Array.from({ length: 54 }, (_, index) => 18 + ((index * 37) % 58));
@@ -44,39 +44,39 @@ async function readError(response: Response) {
 export default function Home() {
   const [draft, setDraft] = useState("");
   const [submittedText, setSubmittedText] = useState("");
-  const [reply, setReply] = useState<VoiceReply | null>(null);
+  const [reply, setReply] = useState<AvatarReply | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState("");
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const currentAudioUrlRef = useRef<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const currentVideoUrlRef = useRef<string | null>(null);
   const shouldAutoPlayRef = useRef(false);
 
   const activeUserText = reply?.userText ?? submittedText;
 
-  const releaseCurrentAudio = useCallback(() => {
-    if (currentAudioUrlRef.current) {
-      URL.revokeObjectURL(currentAudioUrlRef.current);
-      currentAudioUrlRef.current = null;
+  const releaseCurrentVideo = useCallback(() => {
+    if (currentVideoUrlRef.current) {
+      URL.revokeObjectURL(currentVideoUrlRef.current);
+      currentVideoUrlRef.current = null;
     }
   }, []);
 
   useEffect(() => {
     return () => {
-      releaseCurrentAudio();
+      releaseCurrentVideo();
     };
-  }, [releaseCurrentAudio]);
+  }, [releaseCurrentVideo]);
 
   const resetConversation = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
     }
 
-    releaseCurrentAudio();
+    releaseCurrentVideo();
     shouldAutoPlayRef.current = false;
     setReply(null);
     setSubmittedText("");
@@ -84,7 +84,7 @@ export default function Home() {
     setDuration(0);
     setIsPlaying(false);
     setError("");
-  }, [releaseCurrentAudio]);
+  }, [releaseCurrentVideo]);
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -94,11 +94,11 @@ export default function Home() {
       return;
     }
 
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
     }
-    releaseCurrentAudio();
+    releaseCurrentVideo();
 
     setDraft("");
     setSubmittedText(text);
@@ -118,17 +118,17 @@ export default function Home() {
         body: JSON.stringify({ message: text }),
       });
 
-      const chatPayload = (await chatResponse.json()) as ChatResponse;
       if (!chatResponse.ok) {
-        throw new Error(chatPayload.error ?? `Chat request failed (${chatResponse.status})`);
+        throw new Error(await readError(chatResponse));
       }
 
+      const chatPayload = (await chatResponse.json()) as ChatResponse;
       const aiText = chatPayload.text?.trim();
       if (!aiText) {
         throw new Error("Chat response did not include text.");
       }
 
-      const ttsResponse = await fetch("/backend/v1/tts", {
+      const avatarResponse = await fetch("/backend/v1/avatar", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -136,42 +136,42 @@ export default function Home() {
         body: JSON.stringify({ text: aiText }),
       });
 
-      if (!ttsResponse.ok) {
-        throw new Error(await readError(ttsResponse));
+      if (!avatarResponse.ok) {
+        throw new Error(await readError(avatarResponse));
       }
 
-      const audioBlob = await ttsResponse.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-      currentAudioUrlRef.current = audioUrl;
+      const videoBlob = await avatarResponse.blob();
+      const videoUrl = URL.createObjectURL(videoBlob);
+      currentVideoUrlRef.current = videoUrl;
       shouldAutoPlayRef.current = true;
 
       setReply({
         userText: text,
         aiText,
         chatLatencyMs: typeof chatPayload.latency_ms === "number" ? chatPayload.latency_ms : null,
-        audioUrl,
+        videoUrl,
       });
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Voice generation failed.");
+      setError(caughtError instanceof Error ? caughtError.message : "Avatar generation failed.");
     } finally {
       setIsLoading(false);
     }
   }
 
   async function togglePlayback() {
-    const audio = audioRef.current;
-    if (!audio || !reply) {
+    const video = videoRef.current;
+    if (!video || !reply) {
       return;
     }
 
     if (isPlaying) {
-      audio.pause();
+      video.pause();
       setIsPlaying(false);
       return;
     }
 
     try {
-      await audio.play();
+      await video.play();
       setIsPlaying(true);
     } catch {
       setIsPlaying(false);
@@ -179,31 +179,31 @@ export default function Home() {
   }
 
   function handleLoadedMetadata() {
-    const audio = audioRef.current;
-    if (!audio) {
+    const video = videoRef.current;
+    if (!video) {
       return;
     }
 
-    if (Number.isFinite(audio.duration)) {
-      setDuration(audio.duration);
+    if (Number.isFinite(video.duration)) {
+      setDuration(video.duration);
     }
 
     if (shouldAutoPlayRef.current) {
       shouldAutoPlayRef.current = false;
-      void audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      void video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     }
   }
 
   function handleSeek(event: MouseEvent<HTMLButtonElement>) {
-    const audio = audioRef.current;
-    if (!audio || !duration) {
+    const video = videoRef.current;
+    if (!video || !duration) {
       return;
     }
 
     const bounds = event.currentTarget.getBoundingClientRect();
     const ratio = Math.min(Math.max((event.clientX - bounds.left) / bounds.width, 0), 1);
     const nextTime = ratio * duration;
-    audio.currentTime = nextTime;
+    video.currentTime = nextTime;
     setElapsed(nextTime);
   }
 
@@ -246,7 +246,7 @@ export default function Home() {
                   <span key={index} style={{ height: `${Math.max(10, height * 0.55)}px` }} />
                 ))}
               </div>
-              <p>Type a message, and the AI will reply with playable voice audio.</p>
+              <p>Type a message, and the AI will reply with a playable avatar video.</p>
             </div>
           )}
 
@@ -263,7 +263,7 @@ export default function Home() {
                 <span />
                 <span />
               </div>
-              <span>Generating voice...</span>
+              <span>Generating avatar...</span>
             </div>
           )}
 
@@ -271,10 +271,12 @@ export default function Home() {
 
           {reply && !isLoading && (
             <article className="voice-card">
-              <audio
-                ref={audioRef}
-                src={reply.audioUrl}
+              <video
+                className="avatar-video"
+                ref={videoRef}
+                src={reply.videoUrl}
                 preload="metadata"
+                playsInline
                 onLoadedMetadata={handleLoadedMetadata}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
@@ -286,7 +288,7 @@ export default function Home() {
               />
 
               <div className="voice-card-header">
-                <span>AI Voice Reply</span>
+                <span>AI Avatar Reply</span>
                 {reply.chatLatencyMs !== null && <span className="latency">{reply.chatLatencyMs} ms</span>}
               </div>
 
@@ -295,7 +297,7 @@ export default function Home() {
                   className="play-button"
                   type="button"
                   onClick={togglePlayback}
-                  aria-label={isPlaying ? "Pause voice" : "Play voice"}
+                  aria-label={isPlaying ? "Pause video" : "Play video"}
                 >
                   <span className={isPlaying ? "pause-glyph" : "play-glyph"} aria-hidden="true" />
                 </button>
@@ -336,7 +338,7 @@ export default function Home() {
             value={draft}
             disabled={isLoading}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="Type a message, and voice will reply..."
+            placeholder="Type a message, and the avatar will reply..."
             aria-label="Message input"
           />
           <button type="submit" disabled={!draft.trim() || isLoading} aria-label="Send message">

@@ -208,6 +208,18 @@ input:disabled {
   padding: 22px;
 }
 
+.avatar-video {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: min(360px, 44dvh);
+  margin: 0 auto 18px;
+  aspect-ratio: 890 / 1920;
+  border-radius: 8px;
+  background: var(--ink);
+  object-fit: contain;
+}
+
 .voice-card-header {
   display: flex;
   justify-content: space-between;

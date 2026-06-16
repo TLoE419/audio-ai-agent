@@ -1,5 +1,6 @@
 .env
 .DS_Store
+external/
 frontend/.next/
 frontend/node_modules/
 frontend/tsconfig.tsbuildinfo

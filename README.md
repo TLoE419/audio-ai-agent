@@ -88,6 +88,7 @@ Optional settings:
 - `BOSON_TTS_VOICE`: defaults to `default`.
 - `BOSON_TTS_RESPONSE_FORMAT`: defaults to `mp3`.
 - `BOSON_TTS_TIMEOUT_MS`: defaults to `30000`.
+- `AVATAR_TIMEOUT_MS`: defaults to `300000` for `/v1/avatar` video generation.
 
 ## Frontend
 
