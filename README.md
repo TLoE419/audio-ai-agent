@@ -129,3 +129,4 @@ The frontend calls `/backend/v1/chat` and `/backend/v1/tts`. `frontend/next.conf
 Optional setting:
 
 - `BACKEND_URL`: overrides the backend URL used by the Next.js rewrite.
+- `NEXT_PUBLIC_OPENAVATAR_URL`: overrides the embedded OpenAvatarChat URL. Defaults to `http://127.0.0.1:8282/`.
