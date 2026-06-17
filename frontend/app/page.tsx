@@ -17,6 +17,7 @@ type AvatarReply = {
 
 const WAVE_BARS = Array.from({ length: 54 }, (_, index) => 18 + ((index * 37) % 58));
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:18080";
+const OPEN_AVATAR_URL = process.env.NEXT_PUBLIC_OPENAVATAR_URL ?? "http://127.0.0.1:8282/";
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) {
@@ -225,127 +226,147 @@ export default function Home() {
   }, [duration, elapsed, isPlaying, reply]);
 
   return (
-    <main className="voice-shell">
-      <section className="voice-panel" aria-label="Audio AI Agent">
+    <main className="voice-shell is-live">
+      <section className="voice-panel is-live" aria-label="Audio AI Agent">
         <header className="voice-header">
           <div className="brand">
             <span className="brand-mark" aria-hidden="true" />
             <span>Voice Interface</span>
           </div>
-          {(activeUserText || error) && (
-            <button className="clear-button" type="button" onClick={resetConversation}>
-              Clear
-            </button>
-          )}
+          <div className="header-actions">
+            <div className="mode-tabs" aria-label="Avatar mode">
+              <a href="#live">Live</a>
+              <a href="#video">Video</a>
+            </div>
+            {(activeUserText || error) && (
+              <button className="clear-button" type="button" onClick={resetConversation}>
+                Clear
+              </button>
+            )}
+          </div>
         </header>
 
-        <div className={`conversation ${!activeUserText && !isLoading && !error ? "is-empty" : ""}`}>
-          {!activeUserText && !isLoading && !error && (
-            <div className="empty-state" aria-label="No message submitted yet">
-              <div className="idle-wave" aria-hidden="true">
-                {WAVE_BARS.slice(0, 28).map((height, index) => (
-                  <span key={index} style={{ height: `${Math.max(10, height * 0.55)}px` }} />
-                ))}
-              </div>
-              <p>Type a message, and the AI will reply with a playable avatar video.</p>
-            </div>
-          )}
+        <div className="mode-pages">
+          <section className="mode-page live-page" id="live" aria-label="Live OpenAvatarChat">
+            <iframe
+              className="openavatar-frame"
+              src={OPEN_AVATAR_URL}
+              title="OpenAvatarChat"
+              allow="camera; microphone; autoplay; clipboard-read; clipboard-write; fullscreen"
+              allowFullScreen
+            />
+          </section>
 
-          {activeUserText && (
-            <div className="message-row">
-              <div className="user-bubble">{activeUserText}</div>
-            </div>
-          )}
-
-          {isLoading && (
-            <div className="loading-card" role="status" aria-live="polite">
-              <div className="loading-dots" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </div>
-              <span>Generating avatar...</span>
-            </div>
-          )}
-
-          {error && !isLoading && <div className="error-card">{error}</div>}
-
-          {reply && !isLoading && (
-            <article className="voice-card">
-              <video
-                className="avatar-video"
-                ref={videoRef}
-                src={reply.videoUrl}
-                preload="metadata"
-                playsInline
-                onLoadedMetadata={handleLoadedMetadata}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onTimeUpdate={(event) => setElapsed(event.currentTarget.currentTime)}
-                onEnded={() => {
-                  setIsPlaying(false);
-                  setElapsed(duration);
-                }}
-              />
-
-              <div className="voice-card-header">
-                <span>AI Avatar Reply</span>
-                {reply.chatLatencyMs !== null && <span className="latency">{reply.chatLatencyMs} ms</span>}
-              </div>
-
-              <div className="player-row">
-                <button
-                  className="play-button"
-                  type="button"
-                  onClick={togglePlayback}
-                  aria-label={isPlaying ? "Pause video" : "Play video"}
-                >
-                  <span className={isPlaying ? "pause-glyph" : "play-glyph"} aria-hidden="true" />
-                </button>
-
-                <div className="waveform" aria-hidden="true">
-                  {WAVE_BARS.map((height, index) => (
-                    <span
-                      className={index <= activeBarIndex && (isPlaying || elapsed > 0) ? "is-active" : ""}
-                      key={index}
-                      style={{ height: `${height}px` }}
-                    />
-                  ))}
+          <section className="mode-page video-page" id="video" aria-label="Video avatar fallback">
+            <div className={`conversation ${!activeUserText && !isLoading && !error ? "is-empty" : ""}`}>
+              {!activeUserText && !isLoading && !error && (
+                <div className="empty-state" aria-label="No message submitted yet">
+                  <div className="idle-wave" aria-hidden="true">
+                    {WAVE_BARS.slice(0, 28).map((height, index) => (
+                      <span key={index} style={{ height: `${Math.max(10, height * 0.55)}px` }} />
+                    ))}
+                  </div>
+                  <p>Type a message, and the AI will reply with a playable avatar video.</p>
                 </div>
-              </div>
+              )}
 
-              <button className="progress-track" type="button" onClick={handleSeek} aria-label="Seek playback">
-                <span style={{ width: `${progress * 100}%` }} />
+              {activeUserText && (
+                <div className="message-row">
+                  <div className="user-bubble">{activeUserText}</div>
+                </div>
+              )}
+
+              {isLoading && (
+                <div className="loading-card" role="status" aria-live="polite">
+                  <div className="loading-dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <span>Generating avatar...</span>
+                </div>
+              )}
+
+              {error && !isLoading && <div className="error-card">{error}</div>}
+
+              {reply && !isLoading && (
+                <article className="voice-card">
+                  <video
+                    className="avatar-video"
+                    ref={videoRef}
+                    src={reply.videoUrl}
+                    preload="metadata"
+                    playsInline
+                    onLoadedMetadata={handleLoadedMetadata}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    onTimeUpdate={(event) => setElapsed(event.currentTarget.currentTime)}
+                    onEnded={() => {
+                      setIsPlaying(false);
+                      setElapsed(duration);
+                    }}
+                  />
+
+                  <div className="voice-card-header">
+                    <span>AI Avatar Reply</span>
+                    {reply.chatLatencyMs !== null && <span className="latency">{reply.chatLatencyMs} ms</span>}
+                  </div>
+
+                  <div className="player-row">
+                    <button
+                      className="play-button"
+                      type="button"
+                      onClick={togglePlayback}
+                      aria-label={isPlaying ? "Pause video" : "Play video"}
+                    >
+                      <span className={isPlaying ? "pause-glyph" : "play-glyph"} aria-hidden="true" />
+                    </button>
+
+                    <div className="waveform" aria-hidden="true">
+                      {WAVE_BARS.map((height, index) => (
+                        <span
+                          className={index <= activeBarIndex && (isPlaying || elapsed > 0) ? "is-active" : ""}
+                          key={index}
+                          style={{ height: `${height}px` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <button className="progress-track" type="button" onClick={handleSeek} aria-label="Seek playback">
+                    <span style={{ width: `${progress * 100}%` }} />
+                  </button>
+
+                  <div className="time-row">
+                    <span>{formatTime(elapsed)}</span>
+                    <span>{duration ? formatTime(duration) : "--:--"}</span>
+                  </div>
+
+                  <div className="transcript">
+                    <div className="transcript-label">Transcript</div>
+                    <p>
+                      {transcriptText}
+                      <span className={isPlaying ? "caret is-visible" : "caret"} aria-hidden="true" />
+                    </p>
+                  </div>
+                </article>
+              )}
+            </div>
+
+            <form className="input-bar" onSubmit={submitMessage}>
+              <input
+                value={draft}
+                disabled={isLoading}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Type a message, and the avatar will reply..."
+                aria-label="Message input"
+              />
+              <button type="submit" disabled={!draft.trim() || isLoading} aria-label="Send message">
+                <span className="send-glyph" aria-hidden="true" />
               </button>
-
-              <div className="time-row">
-                <span>{formatTime(elapsed)}</span>
-                <span>{duration ? formatTime(duration) : "--:--"}</span>
-              </div>
-
-              <div className="transcript">
-                <div className="transcript-label">Transcript</div>
-                <p>
-                  {transcriptText}
-                  <span className={isPlaying ? "caret is-visible" : "caret"} aria-hidden="true" />
-                </p>
-              </div>
-            </article>
-          )}
+            </form>
+          </section>
         </div>
-
-        <form className="input-bar" onSubmit={submitMessage}>
-          <input
-            value={draft}
-            disabled={isLoading}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Type a message, and the avatar will reply..."
-            aria-label="Message input"
-          />
-          <button type="submit" disabled={!draft.trim() || isLoading} aria-label="Send message">
-            <span className="send-glyph" aria-hidden="true" />
-          </button>
-        </form>
       </section>
     </main>
   );
