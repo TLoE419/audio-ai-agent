@@ -1,0 +1,31 @@
+diff --git a/lite_avatar.py b/lite_avatar.py
+index ead894e..aaabd53 100644
+--- a/lite_avatar.py
++++ b/lite_avatar.py
+@@ -1,4 +1,6 @@
+ import os
++import sys
++from pathlib import Path
+ import numpy as np
+ import cv2
+ import json
+@@ -18,6 +20,10 @@ import torch
+ from scipy.interpolate import interp1d
+ import wave
+ 
++CURRENT_DIR = Path(__file__).resolve().parent
++if str(CURRENT_DIR) not in sys.path:
++    sys.path.insert(0, str(CURRENT_DIR))
++
+ 
+ def geneHeadInfo(sampleRate, bits, sampleNum):
+     import struct
+@@ -330,7 +336,7 @@ class liteAvatar(object):
+         for p in self.threads_prep:
+             p.join()
+         
+-        cmd = '/usr/bin/ffmpeg -r 30 -i {}/%05d.jpg -i {} -framerate 30 -c:v libx264 -pix_fmt yuv420p -b:v 5000k -strict experimental -loglevel error {}/test_demo.mp4 -y'.format(tmp_frame_dir, audio_file_path, result_dir)
++        cmd = 'ffmpeg -r 30 -i {}/%05d.jpg -i {} -framerate 30 -c:v libx264 -pix_fmt yuv420p -b:v 5000k -strict experimental -loglevel error {}/test_demo.mp4 -y'.format(tmp_frame_dir, audio_file_path, result_dir)
+         os.system(cmd)
+     
+     @staticmethod
