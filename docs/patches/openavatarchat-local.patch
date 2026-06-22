@@ -1,0 +1,170 @@
+diff --git a/install.py b/install.py
+index 86f047d..51abf0c 100644
+--- a/install.py
++++ b/install.py
+@@ -1,6 +1,7 @@
+ import argparse
+ import os
+ import re
++import platform
+ import subprocess
+ import sys
+ from pathlib import Path
+@@ -33,11 +34,12 @@ VERSION_OVERRIDES = {
+     "diffusers": ">=0.34.0,<0.36.0",
+ }
+ 
+-# Package name replacements: when handler pyproject.toml declares a CPU-only
+-# package but the project should use the GPU variant instead.
+-PACKAGE_REPLACEMENTS = {
+-    "onnxruntime": "onnxruntime-gpu",
+-}
++# Package name replacements for handler pyproject.toml dependencies.
++PACKAGE_REPLACEMENTS = {}
++if sys.platform == "darwin":
++    PACKAGE_REPLACEMENTS["onnxruntime-gpu"] = "onnxruntime"
++elif platform.machine().lower() != "arm64":
++    PACKAGE_REPLACEMENTS["onnxruntime"] = "onnxruntime-gpu"
+ 
+ # Packages managed by the root pyproject.toml that must NEVER be overridden
+ # by handler dependencies. These are injected into the install list with
+diff --git a/pyproject.toml b/pyproject.toml
+index 411e4a1..19e20e7 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -39,7 +39,8 @@ dependencies = [
+     "pillow>=11.1.0",
+     "pyjwt==2.10.1",
+     "opuslib>=3.0.1",  # Opus 音频编解码支持
+-    "onnxruntime-gpu~=1.20.2",
++    "onnxruntime~=1.20.1 ; sys_platform == 'darwin'",
++    "onnxruntime-gpu~=1.20.2 ; sys_platform != 'darwin'",
+     "protobuf>=4.25.3,<5",  # TensorFlow 2.16.x 兼容范围，避免 MessageFactory.GetPrototype 报错
+     "huggingface-hub>=0.23.2,<1.0",
+ ]
+@@ -61,13 +62,13 @@ members = [
+ #fastrtc = { path = "src/third_party/gradio_webrtc_videochat/dist/fastrtc-0.0.28.dev0-py3-none-any.whl" }
+ 
+ torch = [
+-    { index = "pytorch-cu128" },
++    { index = "pytorch-cu128", marker = "sys_platform != 'darwin'" },
+ ]
+ torchvision = [
+-    { index = "pytorch-cu128" },
++    { index = "pytorch-cu128", marker = "sys_platform != 'darwin'" },
+ ]
+ torchaudio = [
+-    { index = "pytorch-cu128" },
++    { index = "pytorch-cu128", marker = "sys_platform != 'darwin'" },
+ ]
+ 
+ [[tool.uv.index]]
+diff --git a/src/handlers/avatar/liteavatar/liteavatar_worker.py b/src/handlers/avatar/liteavatar/liteavatar_worker.py
+index 1af718c..9fab962 100644
+--- a/src/handlers/avatar/liteavatar/liteavatar_worker.py
++++ b/src/handlers/avatar/liteavatar/liteavatar_worker.py
+@@ -251,8 +251,8 @@ class LiteAvatarWorker:
+             # Keep process alive
+             while True:
+                 time.sleep(1)
+-        except Exception as e:
+-            logger.error(f"Error in avatar process: {e}")
++        except Exception:
++            logger.exception("Error in avatar process")
+         finally:
+             if hasattr(self, 'shm_pool') and self.shm_pool is not None:
+                 self.shm_pool.cleanup()
+@@ -381,4 +381,4 @@ class LiteAvatarWorker:
+         self.destroy()
+         self._init_shared_memory_pool()
+         self._start_avatar_process()
+-        self._stop_ack_event.clear()
+\ No newline at end of file
++        self._stop_ack_event.clear()
+diff --git a/src/handlers/avatar/liteavatar/shared_memory_buffer_pool.py b/src/handlers/avatar/liteavatar/shared_memory_buffer_pool.py
+index 5cf4097..97a7325 100644
+--- a/src/handlers/avatar/liteavatar/shared_memory_buffer_pool.py
++++ b/src/handlers/avatar/liteavatar/shared_memory_buffer_pool.py
+@@ -160,7 +160,11 @@ class SharedMemoryBufferPool:
+             except Exception as e:
+                 logger.error(f"Failed to attach to audio buffer {i} ({shm_name}): {e}")
+                 self.audio_buffers.append(None)
+-        logger.info(f"Audio attached: {len(self.audio_buffers)} buffers, queue: {self.audio_available.qsize()}")
++        queue_size = self._safe_qsize(self.audio_available)
++        if queue_size is None:
++            logger.info(f"Audio attached: {len(self.audio_buffers)} buffers")
++        else:
++            logger.info(f"Audio attached: {len(self.audio_buffers)} buffers, queue: {queue_size}")
+     
+     def _attach_video_pool(self, shm_names: List[str]):
+         """Attach to existing video buffer pool."""
+@@ -279,7 +283,6 @@ class SharedMemoryBufferPool:
+         
+         if self.audio_buffers[index] is not None:
+             self.audio_available.put(index)
+-            logger.debug(f"Released audio buffer {index}")
+             self._maybe_log_buffer_usage(
+                 buffer_type='audio',
+                 queue=self.audio_available,
+@@ -302,7 +305,6 @@ class SharedMemoryBufferPool:
+         
+         if self.video_buffers[index] is not None:
+             self.video_available.put(index)
+-            logger.debug(f"Released video buffer {index}")
+             self._maybe_log_buffer_usage(
+                 buffer_type='video',
+                 queue=self.video_available,
+@@ -428,4 +430,3 @@ class SharedMemoryBufferPool:
+             self.cleanup()
+         except Exception as e:
+             logger.error(f"Error in __del__: {e}")
+-
+diff --git a/src/handlers/llm/openai_compatible/llm_handler_openai_compatible.py b/src/handlers/llm/openai_compatible/llm_handler_openai_compatible.py
+index 11a5e80..9c9cb51 100644
+--- a/src/handlers/llm/openai_compatible/llm_handler_openai_compatible.py
++++ b/src/handlers/llm/openai_compatible/llm_handler_openai_compatible.py
+@@ -24,7 +24,7 @@ from chat_engine.data_models.chat_stream_config import ChatStreamConfig
+ class LLMConfig(HandlerBaseConfigModel, BaseModel):
+     model_name: str = Field(default="qwen-plus")
+     system_prompt: str = Field(default="请你扮演一个 AI 助手，用简短的对话来回答用户的问题，并在对话内容中加入合适的标点符号，不需要加入标点符号相关的内容")
+-    api_key: str = Field(default=os.getenv("DASHSCOPE_API_KEY"))
++    api_key: str = Field(default=os.getenv("DASHSCOPE_API_KEY"), repr=False)
+     api_url: str = Field(default=None)
+     enable_video_input: bool = Field(default=False)
+     history_length: int = Field(default=20)
+@@ -52,6 +52,12 @@ class HandlerLLM(HandlerBase, ABC):
+     def __init__(self):
+         super().__init__()
+ 
++    @staticmethod
++    def _default_api_key(api_url: Optional[str]) -> Optional[str]:
++        if api_url and "api.openai.com" in api_url:
++            return os.getenv("OPENAI_API_KEY")
++        return os.getenv("DASHSCOPE_API_KEY")
++
+     def get_handler_info(self) -> HandlerBaseInfo:
+         return HandlerBaseInfo(
+             config_model=LLMConfig,
+@@ -85,6 +91,8 @@ class HandlerLLM(HandlerBase, ABC):
+ 
+     def load(self, engine_config: ChatEngineConfigModel, handler_config: Optional[BaseModel] = None):
+         if isinstance(handler_config, LLMConfig):
++            if handler_config.api_key is None or len(handler_config.api_key) == 0:
++                handler_config.api_key = self._default_api_key(handler_config.api_url)
+             if handler_config.api_key is None or len(handler_config.api_key) == 0:
+                 error_message = 'api_key is required in config/xxx.yaml, when use handler_llm'
+                 logger.error(error_message)
+@@ -93,6 +101,8 @@ class HandlerLLM(HandlerBase, ABC):
+     def create_context(self, session_context, handler_config=None):
+         if not isinstance(handler_config, LLMConfig):
+             handler_config = LLMConfig()
++        if handler_config.api_key is None or len(handler_config.api_key) == 0:
++            handler_config.api_key = self._default_api_key(handler_config.api_url)
+         context = LLMContext(session_context.session_info.session_id)
+         context.model_name = handler_config.model_name
+         context.system_prompt = {'role': 'system', 'content': handler_config.system_prompt}
+@@ -222,4 +232,3 @@ class HandlerLLM(HandlerBase, ABC):
+             except Exception:
+                 pass
+             context.client = None
+-
