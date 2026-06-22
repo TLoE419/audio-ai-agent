@@ -234,6 +234,9 @@ export default function Home() {
             <span>Voice Interface</span>
           </div>
           <div className="header-actions">
+            <a className="header-link" href="/flashhead">
+              FlashHead
+            </a>
             <div className="mode-tabs" aria-label="Avatar mode">
               <a href="#live">Live</a>
               <a href="#video">Video</a>

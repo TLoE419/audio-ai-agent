@@ -119,6 +119,18 @@ input:disabled {
   gap: 12px;
 }
 
+.header-link {
+  color: var(--muted);
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.header-link:hover {
+  color: var(--ink);
+}
+
 .mode-tabs {
   display: inline-flex;
   gap: 2px;

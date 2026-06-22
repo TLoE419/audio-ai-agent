@@ -41,6 +41,8 @@ audio-ai-agent/
     tts.go
   frontend/
     app/
+      flashhead/
+        page.tsx
       globals.css
       layout.tsx
       page.tsx
@@ -90,6 +92,7 @@ OpenAI optional settings:
 - `OPENAI_BASE_URL`: defaults to `https://api.openai.com/v1`.
 
 `POST /v1/tts` uses Boson AI Higgs Audio v3 TTS unless `BOSON_API_KEY` is missing.
+FlashHead is the default avatar path now: run OpenAvatarChat with `config/local_openai_flashhead.yaml` and use the Live tab. `/v1/avatar` is kept as the old LiteAvatar video fallback only.
 
 Required setting:
 
@@ -102,8 +105,8 @@ Optional settings:
 - `BOSON_TTS_VOICE`: defaults to `default`.
 - `BOSON_TTS_RESPONSE_FORMAT`: defaults to `mp3`.
 - `BOSON_TTS_TIMEOUT_MS`: defaults to `30000`.
-- `AVATAR_TIMEOUT_MS`: defaults to `300000` for `/v1/avatar` video generation.
-- `OPENAVATARCHAT_PRELOAD`: defaults to enabled when `external/OpenAvatarChat` exists; set `0` to use the old per-request script path.
+- `AVATAR_TIMEOUT_MS`: defaults to `300000` for legacy `/v1/avatar` video generation.
+- `OPENAVATARCHAT_PRELOAD`: keep `0` for FlashHead. Set `1` only when intentionally using the legacy LiteAvatar fallback.
 
 ## Frontend
 
@@ -130,3 +133,4 @@ Optional setting:
 
 - `BACKEND_URL`: overrides the backend URL used by the Next.js rewrite.
 - `NEXT_PUBLIC_OPENAVATAR_URL`: overrides the embedded OpenAvatarChat URL. Defaults to `http://127.0.0.1:8282/`.
+- `NEXT_PUBLIC_FLASHHEAD_URL`: overrides the `/flashhead` embedded FlashHead URL. Defaults to `NEXT_PUBLIC_OPENAVATAR_URL`.

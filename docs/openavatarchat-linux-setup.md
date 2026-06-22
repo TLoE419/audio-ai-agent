@@ -15,11 +15,9 @@ mkdir -p external
 git clone https://github.com/HumanAIGC-Engineering/OpenAvatarChat.git external/OpenAvatarChat
 cd external/OpenAvatarChat
 git checkout dcfba11
-git submodule update --init --recursive src/handlers/avatar/liteavatar/algo/liteavatar
+git submodule update --init --recursive src/handlers/avatar/flashhead/SoulX-FlashHead
 git apply ../../docs/patches/openavatarchat-local.patch
 cp ../../docs/openavatarchat-configs/*.yaml config/
-cd src/handlers/avatar/liteavatar/algo/liteavatar
-git apply ../../../../../../../../docs/patches/liteavatar-local.patch
 ```
 
 Then install the OpenAvatarChat dependencies on Linux from a clean environment:
@@ -28,17 +26,18 @@ Then install the OpenAvatarChat dependencies on Linux from a clean environment:
 cd external/OpenAvatarChat
 python3 -m venv .venv
 . .venv/bin/activate
-python install.py
+python install.py --config config/local_openai_flashhead.yaml
+python scripts/download_models.py --handler flashhead
 ```
 
-Set the keys on the Linux machine, not in Git:
+Create the OpenAvatarChat `.env` on the Linux machine, not in Git:
 
 ```sh
-export OPENAI_API_KEY="..."
+ln -sf ../../.env .env
 ```
 
 Use the preserved config when starting OpenAvatarChat:
 
 ```sh
-python src/demo.py --config config/chat_with_openai_compatible_edge_tts_mac.yaml
+python src/demo.py --config config/local_openai_flashhead.yaml
 ```
