@@ -17,6 +17,7 @@ cd external/OpenAvatarChat
 git checkout dcfba11
 git submodule update --init --recursive src/handlers/avatar/flashhead/SoulX-FlashHead
 git apply ../../docs/patches/openavatarchat-local.patch
+git apply ../../docs/patches/openavatarchat-higgs-tts.patch
 cp ../../docs/openavatarchat-configs/*.yaml config/
 ```
 
