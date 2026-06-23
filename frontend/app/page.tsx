@@ -17,6 +17,7 @@ type AvatarReply = {
 const WAVE_BARS = Array.from({ length: 54 }, (_, index) => 18 + ((index * 37) % 58));
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:18080";
 const OPEN_AVATAR_URL = process.env.NEXT_PUBLIC_OPENAVATAR_URL ?? "http://127.0.0.1:8282/";
+const AUDIBLE_SAMPLE_THRESHOLD = 4;
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) {
@@ -58,10 +59,16 @@ export default function Home() {
   const shouldAutoPlayRef = useRef(false);
   const submitStartedAtRef = useRef<number | null>(null);
   const playbackLatencyRecordedRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const audioAnalyserRef = useRef<AnalyserNode | null>(null);
+  const audioSamplesRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const audibleCheckFrameRef = useRef<number | null>(null);
 
   const activeUserText = reply?.userText ?? submittedText;
 
   const releaseCurrentVideo = useCallback(() => {
+    stopAudibleCheck();
     if (currentVideoUrlRef.current) {
       URL.revokeObjectURL(currentVideoUrlRef.current);
       currentVideoUrlRef.current = null;
@@ -103,6 +110,7 @@ export default function Home() {
 
     submitStartedAtRef.current = performance.now();
     playbackLatencyRecordedRef.current = false;
+    void resumeAudioContext();
 
     if (videoRef.current) {
       videoRef.current.pause();
@@ -168,13 +176,111 @@ export default function Home() {
     }
   }
 
-  function handlePlaybackStarted() {
+  function stopAudibleCheck() {
+    if (audibleCheckFrameRef.current !== null) {
+      cancelAnimationFrame(audibleCheckFrameRef.current);
+      audibleCheckFrameRef.current = null;
+    }
+  }
+
+  function getAudioContext() {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const AudioContextConstructor =
+      window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) {
+      return null;
+    }
+
+    audioContextRef.current ??= new AudioContextConstructor();
+    return audioContextRef.current;
+  }
+
+  async function resumeAudioContext() {
+    const context = getAudioContext();
+    if (context?.state === "suspended") {
+      await context.resume();
+    }
+  }
+
+  function ensureAudioAnalyser(video: HTMLVideoElement) {
+    const context = getAudioContext();
+    if (!context) {
+      return null;
+    }
+
+    if (!audioSourceRef.current) {
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+
+      const source = context.createMediaElementSource(video);
+      source.connect(analyser);
+      analyser.connect(context.destination);
+
+      audioSourceRef.current = source;
+      audioAnalyserRef.current = analyser;
+      audioSamplesRef.current = new Uint8Array(analyser.fftSize);
+    }
+
+    return audioAnalyserRef.current;
+  }
+
+  function recordAudioStartLatency() {
     if (playbackLatencyRecordedRef.current || submitStartedAtRef.current === null) {
       return;
     }
 
     playbackLatencyRecordedRef.current = true;
+    stopAudibleCheck();
     setPlaybackLatencyMs(Math.round(performance.now() - submitStartedAtRef.current));
+  }
+
+  async function detectAudiblePlayback() {
+    const video = videoRef.current;
+    if (!video || playbackLatencyRecordedRef.current) {
+      return;
+    }
+
+    try {
+      await resumeAudioContext();
+    } catch {
+      recordAudioStartLatency();
+      return;
+    }
+
+    const analyser = ensureAudioAnalyser(video);
+    const samples = audioSamplesRef.current;
+    if (!analyser || !samples) {
+      recordAudioStartLatency();
+      return;
+    }
+
+    stopAudibleCheck();
+
+    const detect = () => {
+      if (playbackLatencyRecordedRef.current) {
+        return;
+      }
+
+      if (video.paused || video.ended) {
+        audibleCheckFrameRef.current = null;
+        return;
+      }
+
+      analyser.getByteTimeDomainData(samples);
+      // ponytail: simple amplitude threshold; tune if generated audio has low-level noise.
+      const hasAudibleSample = samples.some((sample) => Math.abs(sample - 128) > AUDIBLE_SAMPLE_THRESHOLD);
+      if (hasAudibleSample) {
+        recordAudioStartLatency();
+        return;
+      }
+
+      audibleCheckFrameRef.current = requestAnimationFrame(detect);
+    };
+
+    detect();
   }
 
   async function togglePlayback() {
@@ -190,6 +296,7 @@ export default function Home() {
     }
 
     try {
+      await resumeAudioContext();
       await video.play();
       setIsPlaying(true);
     } catch {
@@ -319,7 +426,7 @@ export default function Home() {
                     playsInline
                     onLoadedMetadata={handleLoadedMetadata}
                     onPlay={() => setIsPlaying(true)}
-                    onPlaying={handlePlaybackStarted}
+                    onPlaying={() => void detectAudiblePlayback()}
                     onPause={() => setIsPlaying(false)}
                     onTimeUpdate={(event) => setElapsed(event.currentTarget.currentTime)}
                     onEnded={() => {
