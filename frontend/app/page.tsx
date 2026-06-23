@@ -11,7 +11,6 @@ type ChatResponse = {
 type AvatarReply = {
   userText: string;
   aiText: string;
-  chatLatencyMs: number | null;
   videoUrl: string;
 };
 
@@ -51,11 +50,14 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [playbackLatencyMs, setPlaybackLatencyMs] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const currentVideoUrlRef = useRef<string | null>(null);
   const shouldAutoPlayRef = useRef(false);
+  const submitStartedAtRef = useRef<number | null>(null);
+  const playbackLatencyRecordedRef = useRef(false);
 
   const activeUserText = reply?.userText ?? submittedText;
 
@@ -80,10 +82,13 @@ export default function Home() {
 
     releaseCurrentVideo();
     shouldAutoPlayRef.current = false;
+    submitStartedAtRef.current = null;
+    playbackLatencyRecordedRef.current = false;
     setReply(null);
     setSubmittedText("");
     setElapsed(0);
     setDuration(0);
+    setPlaybackLatencyMs(null);
     setIsPlaying(false);
     setError("");
   }, [releaseCurrentVideo]);
@@ -96,6 +101,9 @@ export default function Home() {
       return;
     }
 
+    submitStartedAtRef.current = performance.now();
+    playbackLatencyRecordedRef.current = false;
+
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
@@ -107,6 +115,7 @@ export default function Home() {
     setReply(null);
     setElapsed(0);
     setDuration(0);
+    setPlaybackLatencyMs(null);
     setIsPlaying(false);
     setError("");
     setIsLoading(true);
@@ -150,7 +159,6 @@ export default function Home() {
       setReply({
         userText: text,
         aiText,
-        chatLatencyMs: typeof chatPayload.latency_ms === "number" ? chatPayload.latency_ms : null,
         videoUrl,
       });
     } catch (caughtError) {
@@ -158,6 +166,15 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function handlePlaybackStarted() {
+    if (playbackLatencyRecordedRef.current || submitStartedAtRef.current === null) {
+      return;
+    }
+
+    playbackLatencyRecordedRef.current = true;
+    setPlaybackLatencyMs(Math.round(performance.now() - submitStartedAtRef.current));
   }
 
   async function togglePlayback() {
@@ -302,6 +319,7 @@ export default function Home() {
                     playsInline
                     onLoadedMetadata={handleLoadedMetadata}
                     onPlay={() => setIsPlaying(true)}
+                    onPlaying={handlePlaybackStarted}
                     onPause={() => setIsPlaying(false)}
                     onTimeUpdate={(event) => setElapsed(event.currentTarget.currentTime)}
                     onEnded={() => {
@@ -312,7 +330,7 @@ export default function Home() {
 
                   <div className="voice-card-header">
                     <span>AI Avatar Reply</span>
-                    {reply.chatLatencyMs !== null && <span className="latency">{reply.chatLatencyMs} ms</span>}
+                    {playbackLatencyMs !== null && <span className="latency">Audio start {playbackLatencyMs} ms</span>}
                   </div>
 
                   <div className="player-row">
