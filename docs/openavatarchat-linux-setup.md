@@ -6,6 +6,9 @@ This repo intentionally does not track `external/`.
 models, build artifacts, and logs. Rebuild it on the Linux machine instead of
 copying the local macOS folder.
 
+Project-owned OpenAvatarChat overrides live in `openavatarchat-overrides/` and
+are copied into the clean checkout during setup.
+
 ## Restore external/OpenAvatarChat
 
 Run from the `audio-ai-agent` repo root:
@@ -17,7 +20,7 @@ cd external/OpenAvatarChat
 git checkout dcfba11
 git submodule update --init --recursive src/handlers/avatar/flashhead/SoulX-FlashHead
 git apply ../../docs/patches/openavatarchat-local.patch
-git apply ../../docs/patches/openavatarchat-higgs-tts.patch
+cp -R ../../openavatarchat-overrides/. .
 cp ../../docs/openavatarchat-configs/*.yaml config/
 ```
 
